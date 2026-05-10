@@ -46,9 +46,3 @@ jobs:
             docker compose up -d
             docker compose ps
           EOF
-            sudo cp nginx-fitness-api.conf /etc/nginx/sites-available/fitness-api
-            sudo nginx -t
-            sudo systemctl reload nginx
-            docker compose up --build -d
-            docker compose ps
-          EOF
