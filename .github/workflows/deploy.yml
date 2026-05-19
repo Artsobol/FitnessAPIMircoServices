@@ -49,14 +49,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     timeout-minutes: 30
-    environment: production
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Configure SSH
         shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
 
@@ -67,22 +67,15 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-
-          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H "$DEPLOY_HOST" > ~/.ssh/known_hosts
-          fi
-
-          chmod 600 ~/.ssh/known_hosts
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy on server
         shell: bash
+        env:
+          APP_SERVICES: ${{ env.APP_SERVICES }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -euo pipefail
 
@@ -90,36 +83,14 @@ jobs:
           : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
           : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
 
-          encode() {
-            printf '%s' "$1" | base64 -w 0
-          }
-
-          DEPLOY_PATH_B64="$(encode "$DEPLOY_PATH")"
-          NGINX_SITE_NAME_B64="$(encode "$NGINX_SITE_NAME")"
-          NGINX_SITE_CONFIG_B64="$(encode "$NGINX_SITE_CONFIG")"
-
           ssh \
             -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             -i ~/.ssh/deploy_key \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH_B64='$DEPLOY_PATH_B64' \
-             GITHUB_SHA='$GITHUB_SHA' \
-             APP_SERVICES='$APP_SERVICES' \
-             NGINX_SITE_NAME_B64='$NGINX_SITE_NAME_B64' \
-             NGINX_SITE_CONFIG_B64='$NGINX_SITE_CONFIG_B64' \
-             bash -s" <<'REMOTE'
+            "DEPLOY_PATH='$DEPLOY_PATH' GITHUB_SHA='$GITHUB_SHA' APP_SERVICES='$APP_SERVICES' bash -s" <<'EOF'
           set -euo pipefail
-
-          decode() {
-            printf '%s' "$1" | base64 -d
-          }
-
-          DEPLOY_PATH="$(decode "$DEPLOY_PATH_B64")"
-          NGINX_SITE_NAME="$(decode "$NGINX_SITE_NAME_B64")"
-          NGINX_SITE_CONFIG="$(decode "$NGINX_SITE_CONFIG_B64")"
 
           require_command() {
             command -v "$1" >/dev/null 2>&1 || {
@@ -152,41 +123,20 @@ jobs:
           cd "$DEPLOY_PATH"
 
           git fetch --prune origin main
-
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Deployment checkout has local changes. Clean it manually before deploying: $DEPLOY_PATH" >&2
-            git status --short >&2
-            exit 1
-          fi
-
           git cat-file -e "$GITHUB_SHA^{commit}"
-          git checkout --detach "$GITHUB_SHA"
+          git reset --hard "$GITHUB_SHA"
 
           docker compose config --quiet
 
-          if [ -n "$NGINX_SITE_CONFIG" ]; then
+          if [ -f nginx-fitness-api.conf ]; then
             require_command nginx
-
-            site_name="${NGINX_SITE_NAME:-fitness-api}"
-            tmp_config="$(mktemp)"
-            printf '%s\n' "$NGINX_SITE_CONFIG" > "$tmp_config"
-
-            run_sudo install -m 644 "$tmp_config" "/etc/nginx/sites-available/$site_name"
-            run_sudo ln -sfn "/etc/nginx/sites-available/$site_name" "/etc/nginx/sites-enabled/$site_name"
+            run_sudo cp nginx-fitness-api.conf /etc/nginx/sites-available/fitness-api
+            run_sudo ln -sfn /etc/nginx/sites-available/fitness-api /etc/nginx/sites-enabled/fitness-api
             run_sudo nginx -t
             run_sudo systemctl reload nginx
-
-            rm -f "$tmp_config"
           fi
 
           docker compose build --pull $APP_SERVICES
           docker compose up -d --remove-orphans
           docker compose ps
-          REMOTE
-        env:
-          APP_SERVICES: ${{ env.APP_SERVICES }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          NGINX_SITE_NAME: ${{ secrets.NGINX_SITE_NAME || 'fitness-api' }}
-          NGINX_SITE_CONFIG: ${{ secrets.NGINX_SITE_CONFIG }}
+          EOF
