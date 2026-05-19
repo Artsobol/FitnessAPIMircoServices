@@ -6,43 +6,137 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "21"
+  APP_SERVICES: "user-service media-service training-service blog-service progress-service"
+
 jobs:
-  deploy:
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run tests
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
         run: |
           chmod +x ./gradlew
-          ./gradlew build --no-daemon
+          ./gradlew clean build --no-daemon --stacktrace
 
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+
+    steps:
       - name: Configure SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY secret is required}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy on server
+        shell: bash
+        env:
+          APP_SERVICES: ${{ env.APP_SERVICES }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'EOF'
-            set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
-            git pull
-      
-            cp nginx-fitness-api.conf /etc/nginx/sites-available/fitness-api
-            nginx -t
-            systemctl reload nginx
-      
-            docker compose build user-service
-            docker compose build media-service
-            docker compose build training-service
-            docker compose build blog-service
-            docker compose build progress-service
-      
-            docker compose up -d
-            docker compose ps
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
+          : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
+
+          ssh \
+            -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            -i ~/.ssh/deploy_key \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' GITHUB_SHA='$GITHUB_SHA' APP_SERVICES='$APP_SERVICES' bash -s" <<'EOF'
+          set -euo pipefail
+
+          require_command() {
+            command -v "$1" >/dev/null 2>&1 || {
+              echo "Required command is missing on the server: $1" >&2
+              exit 1
+            }
+          }
+
+          run_sudo() {
+            if [ "$(id -u)" -eq 0 ]; then
+              "$@"
+            else
+              sudo "$@"
+            fi
+          }
+
+          require_command git
+          require_command docker
+
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Docker Compose plugin is missing on the server." >&2
+            exit 1
+          fi
+
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            echo "DEPLOY_PATH must point to an existing git checkout: $DEPLOY_PATH" >&2
+            exit 1
+          fi
+
+          cd "$DEPLOY_PATH"
+
+          git fetch --prune origin main
+          git cat-file -e "$GITHUB_SHA^{commit}"
+          git reset --hard "$GITHUB_SHA"
+
+          docker compose config --quiet
+
+          if [ -f nginx-fitness-api.conf ]; then
+            require_command nginx
+            run_sudo cp nginx-fitness-api.conf /etc/nginx/sites-available/fitness-api
+            run_sudo ln -sfn /etc/nginx/sites-available/fitness-api /etc/nginx/sites-enabled/fitness-api
+            run_sudo nginx -t
+            run_sudo systemctl reload nginx
+          fi
+
+          docker compose build --pull $APP_SERVICES
+          docker compose up -d --remove-orphans
+          docker compose ps
           EOF
