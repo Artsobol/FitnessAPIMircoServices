@@ -36,6 +36,22 @@ public class RabbitMessagingAutoConfiguration {
     }
 
     @Bean
+    public Queue userTrainingInteractionTrainingEventsQueue() {
+        return QueueBuilder.durable(RabbitTopology.USER_TRAINING_INTERACTION_TRAINING_EVENTS_QUEUE).build();
+    }
+
+    @Bean
+    public Binding userTrainingInteractionTrainingEventsBinding(
+            @Qualifier("userTrainingInteractionTrainingEventsQueue") Queue userTrainingInteractionTrainingEventsQueue,
+            @Qualifier("trainingEventsExchange") DirectExchange trainingEventsExchange
+    ) {
+        return BindingBuilder
+                .bind(userTrainingInteractionTrainingEventsQueue)
+                .to(trainingEventsExchange)
+                .with(RabbitTopology.TRAINING_CHANGED_ROUTING_KEY);
+    }
+
+    @Bean
     public DirectExchange mediaEventsExchange() {
         return new DirectExchange(RabbitTopology.MEDIA_EVENTS_EXCHANGE, true, false);
     }

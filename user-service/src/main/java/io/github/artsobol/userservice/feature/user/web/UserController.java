@@ -1,5 +1,6 @@
 package io.github.artsobol.userservice.feature.user.web;
 
+import io.github.artsobol.common.config.openapi.ProtectedEndpoint;
 import io.github.artsobol.userservice.feature.user.dto.response.UserResponse;
 import io.github.artsobol.userservice.feature.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +23,7 @@ import java.util.List;
 @Validated
 @RestController
 @Tag(name = "User")
+@ProtectedEndpoint
 @RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {

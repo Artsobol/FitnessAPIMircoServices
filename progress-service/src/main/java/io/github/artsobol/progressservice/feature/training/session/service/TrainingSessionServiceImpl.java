@@ -2,6 +2,7 @@ package io.github.artsobol.progressservice.feature.training.session.service;
 
 import io.github.artsobol.common.exception.http.BadRequestException;
 import io.github.artsobol.common.exception.http.NotFoundException;
+import io.github.artsobol.progressservice.feature.progress.service.ProgressService;
 import io.github.artsobol.progressservice.feature.training.session.dto.response.TrainingSessionResponse;
 import io.github.artsobol.progressservice.feature.training.session.entity.TrainingSession;
 import io.github.artsobol.progressservice.feature.training.session.entity.TrainingStatus;
@@ -18,6 +19,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.ZoneOffset;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,6 +29,7 @@ public class TrainingSessionServiceImpl implements TrainingSessionService, Train
     private final TrainingSessionRepository trainingSessionRepository;
     private final TrainingSessionMapper trainingSessionMapper;
     private final TrainingServiceClient trainingServiceClient;
+    private final ProgressService progressService;
 
     @Override
     @Transactional(readOnly = true)
@@ -76,6 +80,7 @@ public class TrainingSessionServiceImpl implements TrainingSessionService, Train
         ensureSessionInProgress(entity);
         ensureAllExercisesFinished(entity);
         entity.complete();
+        progressService.recordWorkoutCompleted(userId, entity.getCompletedAt().atZone(ZoneOffset.UTC).toLocalDate());
 
         log.info("Training session completed sessionId={} userId={}", sessionId, userId);
         return trainingSessionMapper.toResponse(entity);
@@ -92,6 +97,16 @@ public class TrainingSessionServiceImpl implements TrainingSessionService, Train
         entity.abandon();
 
         log.info("Training session abandoned sessionId={} userId={}", sessionId, userId);
+        return trainingSessionMapper.toResponse(entity);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("#userId == authentication.principal.userId")
+    public TrainingSessionResponse updateComment(Long sessionId, Long userId, String comment) {
+        log.info("Updating training session comment sessionId={} userId={}", sessionId, userId);
+        TrainingSession entity = findByIdOrThrow(sessionId, userId);
+        entity.changeComment(comment);
         return trainingSessionMapper.toResponse(entity);
     }
 

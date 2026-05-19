@@ -2,6 +2,7 @@ package io.github.artsobol.progressservice.feature.training.session.web;
 
 import io.github.artsobol.common.api.dto.SliceResponse;
 import io.github.artsobol.common.config.openapi.ProtectedEndpoint;
+import io.github.artsobol.progressservice.feature.training.session.dto.request.UpdateTrainingSessionCommentRequest;
 import io.github.artsobol.progressservice.feature.training.session.dto.response.TrainingSessionResponse;
 import io.github.artsobol.progressservice.feature.training.session.service.TrainingSessionService;
 import io.github.artsobol.common.infrastructure.web.error.dto.ErrorResponse;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -115,5 +117,22 @@ public class TrainingSessionController {
             @AuthenticationPrincipal UserPrincipal principal
     ) {
         return trainingSessionService.abandon(sessionId, principal.userId());
+    }
+
+    @PatchMapping("/training-sessions/{sessionId}/comment")
+    @Operation(summary = "Update training session comment")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200"),
+            @ApiResponse(responseCode = "401",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    })
+    public TrainingSessionResponse updateComment(
+            @PathVariable @Positive Long sessionId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestBody UpdateTrainingSessionCommentRequest request
+    ) {
+        return trainingSessionService.updateComment(sessionId, principal.userId(), request.comment());
     }
 }

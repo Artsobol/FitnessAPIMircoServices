@@ -46,6 +46,10 @@ public class TrainingSessionExercise {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Getter
+    @Column(name = "comment")
+    private String comment;
+
     public static TrainingSessionExercise create(TrainingSession trainingSession, Long trainingExerciseId) {
         TrainingSessionExercise entity = new TrainingSessionExercise();
         entity.updateTrainingSession(trainingSession);
@@ -66,6 +70,10 @@ public class TrainingSessionExercise {
     public void skip() {
         this.exerciseStatus = ExerciseStatus.SKIPPED;
         this.completedAt = Instant.now();
+    }
+
+    public void changeComment(String comment) {
+        this.comment = comment;
     }
 
     public boolean isFinished() {

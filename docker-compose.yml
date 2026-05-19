@@ -145,5 +145,30 @@ services:
       training-service:
         condition: service_started
 
+  user-training-interaction-service:
+    build:
+      context: .
+      args:
+        SERVICE: user-training-interaction-service
+    environment:
+      USER_TRAINING_INTERACTION_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/user_training_interaction_service
+      TRAINING_SERVICE_BASE_URL: http://training-service:8080/api/v1
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "127.0.0.1:8086:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      training-service:
+        condition: service_started
+
 volumes:
   postgres-data:

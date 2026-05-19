@@ -1,14 +1,11 @@
 package io.github.artsobol.progressservice.feature.progress.dto.response;
 
+import java.time.LocalDate;
+
 public record UserProgressResponse(
-        long totalSessions,
-        long activeSessions,
-        long completedSessions,
-        long abandonedSessions,
-        long totalExercises,
-        long notStartedExercises,
-        long inProgressExercises,
-        long completedExercises,
-        long skippedExercises
+        int totalWorkouts,
+        int currentStreak,
+        int longestStreak,
+        LocalDate lastWorkoutDate
 ) {
 }

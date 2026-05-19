@@ -15,4 +15,6 @@ public interface TrainingSessionExerciseService {
     TrainingSessionExerciseResponse complete(Long trainingSessionExerciseId, Long userId);
 
     TrainingSessionExerciseResponse skip(Long trainingSessionExerciseId, Long userId);
+
+    TrainingSessionExerciseResponse updateComment(Long trainingSessionExerciseId, Long userId, String comment);
 }

@@ -15,4 +15,6 @@ public interface TrainingSessionService {
     TrainingSessionResponse complete(Long sessionId, Long userId);
 
     TrainingSessionResponse abandon(Long sessionId, Long userId);
+
+    TrainingSessionResponse updateComment(Long sessionId, Long userId, String comment);
 }

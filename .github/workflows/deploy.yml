@@ -15,7 +15,7 @@ permissions:
 
 env:
   JAVA_VERSION: "21"
-  APP_SERVICES: "user-service media-service training-service blog-service progress-service"
+  APP_SERVICES: "user-service media-service training-service blog-service progress-service user-training-interaction-service"
 
 jobs:
   verify:

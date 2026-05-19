@@ -55,6 +55,10 @@ public class TrainingSession {
     private Instant completedAt;
 
     @Getter
+    @Column(name = "comment")
+    private String comment;
+
+    @Getter
     @OneToMany(mappedBy = "trainingSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
     private List<TrainingSessionExercise> exercises = new ArrayList<>();
@@ -77,6 +81,10 @@ public class TrainingSession {
     public void abandon() {
         this.trainingStatus = TrainingStatus.ABANDONED;
         this.completedAt = Instant.now();
+    }
+
+    public void changeComment(String comment) {
+        this.comment = comment;
     }
 
     public void addExercise(Long trainingExerciseId) {

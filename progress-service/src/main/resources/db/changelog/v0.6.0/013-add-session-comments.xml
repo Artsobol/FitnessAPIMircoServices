@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="20260520-add-training-session-comments" author="artsobol">
+        <addColumn tableName="training_session">
+            <column name="comment" type="text"/>
+        </addColumn>
+
+        <addColumn tableName="training_session_exercise">
+            <column name="comment" type="text"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

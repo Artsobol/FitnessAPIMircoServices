@@ -17,5 +17,6 @@ public interface TrainingSessionMapper {
     @Mapping(target = "trainingStatus")
     @Mapping(target = "startedAt")
     @Mapping(target = "completedAt")
+    @Mapping(target = "comment")
     TrainingSessionResponse toResponse(TrainingSession entity);
 }

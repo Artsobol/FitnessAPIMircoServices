@@ -127,6 +127,20 @@ public class TrainingSessionExerciseServiceImpl implements TrainingSessionExerci
         return trainingSessionExerciseMapper.toResponse(entity);
     }
 
+    @Override
+    @Transactional
+    @PreAuthorize("#userId == authentication.principal.userId")
+    public TrainingSessionExerciseResponse updateComment(Long trainingSessionExerciseId, Long userId, String comment) {
+        log.info(
+                "Updating training session exercise comment trainingSessionExerciseId={} userId={}",
+                trainingSessionExerciseId,
+                userId
+        );
+        TrainingSessionExercise entity = findByIdOrThrow(trainingSessionExerciseId, userId);
+        entity.changeComment(comment);
+        return trainingSessionExerciseMapper.toResponse(entity);
+    }
+
     private TrainingSessionExercise findByIdOrThrow(Long trainingSessionExerciseId, Long userId) {
         return trainingSessionExerciseRepository.findByIdAndTrainingSessionUserId(trainingSessionExerciseId, userId)
                 .orElseThrow(() -> new NotFoundException("training.session.exercise.id.not.found", trainingSessionExerciseId));

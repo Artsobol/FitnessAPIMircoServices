@@ -27,6 +27,8 @@ springdoc:
         url: /api/v1/docs/blog
       - name: progress-service
         url: /api/v1/docs/progress
+      - name: user-training-interaction-service
+        url: /api/v1/docs/user-training-interaction
     operationsSorter: method
     tags-sorter: alpha
     doc-expansion: list

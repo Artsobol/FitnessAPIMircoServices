@@ -9,6 +9,7 @@ public record TrainingSessionExerciseResponse(
         Long trainingSessionId,
         Long trainingExerciseId,
         ExerciseStatus exerciseStatus,
-        Instant completedAt
+        Instant completedAt,
+        String comment
 ) {
 }
