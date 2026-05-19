@@ -6,43 +6,187 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "21"
+  APP_SERVICES: "user-service media-service training-service blog-service progress-service"
+
 jobs:
-  deploy:
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run tests
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
         run: |
           chmod +x ./gradlew
-          ./gradlew build --no-daemon
+          ./gradlew clean build --no-daemon --stacktrace
+
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Configure SSH
+        shell: bash
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY secret is required}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
 
       - name: Deploy on server
+        shell: bash
         run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'EOF'
-            set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
-            git pull
-      
-            cp nginx-fitness-api.conf /etc/nginx/sites-available/fitness-api
-            nginx -t
-            systemctl reload nginx
-      
-            docker compose build user-service
-            docker compose build media-service
-            docker compose build training-service
-            docker compose build blog-service
-            docker compose build progress-service
-      
-            docker compose up -d
-            docker compose ps
-          EOF
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
+          : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
+
+          encode() {
+            printf '%s' "$1" | base64 -w 0
+          }
+
+          DEPLOY_PATH_B64="$(encode "$DEPLOY_PATH")"
+          NGINX_SITE_NAME_B64="$(encode "$NGINX_SITE_NAME")"
+          NGINX_SITE_CONFIG_B64="$(encode "$NGINX_SITE_CONFIG")"
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            -i ~/.ssh/deploy_key \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH_B64='$DEPLOY_PATH_B64' \
+             GITHUB_SHA='$GITHUB_SHA' \
+             APP_SERVICES='$APP_SERVICES' \
+             NGINX_SITE_NAME_B64='$NGINX_SITE_NAME_B64' \
+             NGINX_SITE_CONFIG_B64='$NGINX_SITE_CONFIG_B64' \
+             bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          decode() {
+            printf '%s' "$1" | base64 -d
+          }
+
+          DEPLOY_PATH="$(decode "$DEPLOY_PATH_B64")"
+          NGINX_SITE_NAME="$(decode "$NGINX_SITE_NAME_B64")"
+          NGINX_SITE_CONFIG="$(decode "$NGINX_SITE_CONFIG_B64")"
+
+          require_command() {
+            command -v "$1" >/dev/null 2>&1 || {
+              echo "Required command is missing on the server: $1" >&2
+              exit 1
+            }
+          }
+
+          run_sudo() {
+            if [ "$(id -u)" -eq 0 ]; then
+              "$@"
+            else
+              sudo "$@"
+            fi
+          }
+
+          require_command git
+          require_command docker
+
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Docker Compose plugin is missing on the server." >&2
+            exit 1
+          fi
+
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            echo "DEPLOY_PATH must point to an existing git checkout: $DEPLOY_PATH" >&2
+            exit 1
+          fi
+
+          cd "$DEPLOY_PATH"
+
+          git fetch --prune origin main
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Deployment checkout has local changes. Clean it manually before deploying: $DEPLOY_PATH" >&2
+            git status --short >&2
+            exit 1
+          fi
+
+          git cat-file -e "$GITHUB_SHA^{commit}"
+          git checkout --detach "$GITHUB_SHA"
+
+          docker compose config --quiet
+
+          if [ -n "$NGINX_SITE_CONFIG" ]; then
+            require_command nginx
+
+            site_name="${NGINX_SITE_NAME:-fitness-api}"
+            tmp_config="$(mktemp)"
+            printf '%s\n' "$NGINX_SITE_CONFIG" > "$tmp_config"
+
+            run_sudo install -m 644 "$tmp_config" "/etc/nginx/sites-available/$site_name"
+            run_sudo ln -sfn "/etc/nginx/sites-available/$site_name" "/etc/nginx/sites-enabled/$site_name"
+            run_sudo nginx -t
+            run_sudo systemctl reload nginx
+
+            rm -f "$tmp_config"
+          fi
+
+          docker compose build --pull $APP_SERVICES
+          docker compose up -d --remove-orphans
+          docker compose ps
+          REMOTE
+        env:
+          APP_SERVICES: ${{ env.APP_SERVICES }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          NGINX_SITE_NAME: ${{ secrets.NGINX_SITE_NAME || 'fitness-api' }}
+          NGINX_SITE_CONFIG: ${{ secrets.NGINX_SITE_CONFIG }}
