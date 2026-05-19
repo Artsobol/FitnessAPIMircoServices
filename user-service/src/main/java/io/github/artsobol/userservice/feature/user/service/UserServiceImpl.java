@@ -4,13 +4,20 @@ import io.github.artsobol.common.exception.http.ConflictException;
 import io.github.artsobol.common.exception.http.NotFoundException;
 
 import io.github.artsobol.userservice.feature.user.dto.request.CreateUserRequest;
+import io.github.artsobol.userservice.feature.user.dto.response.UserResponse;
 import io.github.artsobol.userservice.feature.user.entity.Role;
 import io.github.artsobol.userservice.feature.user.entity.User;
+import io.github.artsobol.userservice.feature.user.mapper.UserMapper;
 import io.github.artsobol.userservice.feature.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -18,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserServiceImpl implements UserService, UserFinder {
 
     private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
     @Override
     @Transactional
@@ -59,6 +67,21 @@ public class UserServiceImpl implements UserService, UserFinder {
         return userRepository.findByUsername(username).orElseThrow(
                 () -> new NotFoundException("user.not.found")
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserResponse> getByIds(List<Long> ids) {
+        log.debug("Fetching users ids={}", ids);
+        Map<Long, Integer> orderById = new HashMap<>();
+        for (int i = 0; i < ids.size(); i++) {
+            orderById.putIfAbsent(ids.get(i), i);
+        }
+
+        return userRepository.findByIdIn(orderById.keySet()).stream()
+                .sorted(Comparator.comparingInt(user -> orderById.get(user.getId())))
+                .map(userMapper::toResponse)
+                .toList();
     }
 
     private void ensureUniqueUsername(String username) {

@@ -17,7 +17,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +36,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @Validated
 @RestController
 @Tag(name = "Training")
@@ -42,6 +46,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class TrainingController {
 
     private final TrainingService trainingService;
+
+    @GetMapping(params = "ids")
+    @Operation(summary = "Get trainings by ids")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200")
+    })
+    public List<TrainingResponse> getByIds(
+            @Parameter(description = "Training identifiers", example = "1,2,3")
+            @RequestParam @NotEmpty @Size(max = 100) List<@Positive Long> ids
+    ) {
+        return trainingService.getByIds(ids);
+    }
 
     @GetMapping
     @Operation(summary = "Get trainings")

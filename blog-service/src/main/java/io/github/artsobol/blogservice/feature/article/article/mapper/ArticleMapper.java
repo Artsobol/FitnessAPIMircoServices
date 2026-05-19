@@ -7,6 +7,8 @@ import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import java.util.Set;
+
 @Mapper(config = MapStructConfig.class, uses = {CategoryMapper.class})
 public interface ArticleMapper {
 
@@ -18,4 +20,13 @@ public interface ArticleMapper {
     @Mapping(target = "categories")
     @Mapping(target = "authorId")
     ArticleResponse toResponse(Article entity);
+
+    @BeanMapping(ignoreByDefault = true)
+    @Mapping(target = "id", source = "entity.id")
+    @Mapping(target = "title", source = "entity.title")
+    @Mapping(target = "description", source = "entity.description")
+    @Mapping(target = "videoIds", source = "videoIds")
+    @Mapping(target = "categories", source = "entity.categories")
+    @Mapping(target = "authorId", source = "entity.authorId")
+    ArticleResponse toResponse(Article entity, Set<Long> videoIds);
 }

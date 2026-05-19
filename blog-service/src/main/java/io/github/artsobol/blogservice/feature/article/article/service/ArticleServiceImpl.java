@@ -8,6 +8,8 @@ import io.github.artsobol.blogservice.feature.article.article.entity.Category;
 import io.github.artsobol.blogservice.feature.article.article.mapper.ArticleMapper;
 import io.github.artsobol.blogservice.feature.article.article.repository.ArticleRepository;
 import io.github.artsobol.blogservice.integration.media.client.MediaServiceClient;
+import io.github.artsobol.blogservice.integration.media.projection.MediaVideoCatalog;
+import io.github.artsobol.blogservice.integration.media.projection.MediaVideoCatalogRepository;
 import io.github.artsobol.common.exception.http.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +18,9 @@ import org.springframework.data.domain.Slice;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -26,12 +31,13 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
     private final MediaServiceClient mediaServiceClient;
     private final CategoryFinder categoryFinder;
     private final ArticleRepository repository;
+    private final MediaVideoCatalogRepository mediaVideoCatalogRepository;
 
     @Override
     @Transactional(readOnly = true)
     public ArticleResponse getById(Long id) {
         Article entity = findByIdOrThrow(id);
-        return mapper.toResponse(entity);
+        return toResponse(entity);
     }
 
     @Override
@@ -45,9 +51,9 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
                 name
         );
         if (hasSearchName(name)) {
-            return repository.findByTitleContainingIgnoreCase(name.strip(), pageable).map(mapper::toResponse);
+            return repository.findByTitleContainingIgnoreCase(name.strip(), pageable).map(this::toResponse);
         }
-        return repository.findAll(pageable).map(mapper::toResponse);
+        return repository.findAll(pageable).map(this::toResponse);
     }
 
     @Override
@@ -59,7 +65,7 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
         repository.save(entity);
 
         log.info("Created article articleId={} authorId={}", entity.getId(), entity.getAuthorId());
-        return mapper.toResponse(entity);
+        return toResponse(entity);
     }
 
     @Override
@@ -71,7 +77,7 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
         entity.applyPatch(request.title(), request.description());
 
         log.info("Article updated articleId={}", articleId);
-        return mapper.toResponse(entity);
+        return toResponse(entity);
     }
 
     @Override
@@ -84,7 +90,7 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
         entity.addVideo(videoId);
 
         log.info("Video added videoId={} articleId={}", videoId, articleId);
-        return mapper.toResponse(entity);
+        return toResponse(entity);
     }
 
     @Override
@@ -97,7 +103,7 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
         entity.addCategory(category);
 
         log.info("Category added categoryId={} articleId={}", categoryId, articleId);
-        return mapper.toResponse(entity);
+        return toResponse(entity);
     }
 
     @Override
@@ -140,5 +146,21 @@ public class ArticleServiceImpl implements ArticleService, ArticleFinder {
 
     private boolean hasSearchName(String name) {
         return name != null && !name.isBlank();
+    }
+
+    private ArticleResponse toResponse(Article article) {
+        Set<Long> videoIds = article.getVideoIds();
+
+        if (videoIds.isEmpty()) {
+            return mapper.toResponse(article, Set.of());
+        }
+
+        Set<Long> activeVideoIds = mediaVideoCatalogRepository
+                .findAllByIdInAndActiveTrue(videoIds)
+                .stream()
+                .map(MediaVideoCatalog::getId)
+                .collect(Collectors.toSet());
+
+        return mapper.toResponse(article, activeVideoIds);
     }
 }

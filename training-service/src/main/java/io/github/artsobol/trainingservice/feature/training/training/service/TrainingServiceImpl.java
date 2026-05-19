@@ -23,6 +23,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,6 +47,21 @@ public class TrainingServiceImpl implements TrainingService, TrainingFinder {
         Training entity = findByIdOrThrow(trainingId);
 
         return trainingMapper.toResponse(entity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TrainingResponse> getByIds(List<Long> ids) {
+        log.debug("Fetching trainings ids={}", ids);
+        Map<Long, Integer> orderById = new HashMap<>();
+        for (int i = 0; i < ids.size(); i++) {
+            orderById.putIfAbsent(ids.get(i), i);
+        }
+
+        return trainingRepository.findByIdInAndIsActiveTrue(orderById.keySet()).stream()
+                .sorted(Comparator.comparingInt(training -> orderById.get(training.getId())))
+                .map(trainingMapper::toResponse)
+                .toList();
     }
 
     @Override

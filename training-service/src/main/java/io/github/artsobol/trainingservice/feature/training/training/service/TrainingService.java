@@ -6,9 +6,13 @@ import io.github.artsobol.trainingservice.feature.training.training.dto.response
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 
+import java.util.List;
+
 public interface TrainingService {
 
     TrainingResponse getById(Long id);
+
+    List<TrainingResponse> getByIds(List<Long> ids);
 
     Slice<TrainingResponse> getAll(Pageable pageable, String name);
 

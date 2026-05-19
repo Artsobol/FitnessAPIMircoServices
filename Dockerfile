@@ -13,7 +13,6 @@ RUN chmod +x ./gradlew && ./gradlew ":${SERVICE}:bootJar"
 FROM eclipse-temurin:21-jre
 
 ARG SERVICE
-ENV SERVICE=${SERVICE}
 WORKDIR /app
 
 COPY --from=build /workspace/${SERVICE}/build/libs/*.jar /app/app.jar
