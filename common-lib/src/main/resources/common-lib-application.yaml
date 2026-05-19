@@ -15,6 +15,18 @@ spring:
 
 springdoc:
   swagger-ui:
+    urls-primary-name: user-service
+    urls:
+      - name: user-service
+        url: /api/v1/docs/user
+      - name: media-service
+        url: /api/v1/docs/media
+      - name: training-service
+        url: /api/v1/docs/training
+      - name: blog-service
+        url: /api/v1/docs/blog
+      - name: progress-service
+        url: /api/v1/docs/progress
     operationsSorter: method
     tags-sorter: alpha
     doc-expansion: list
